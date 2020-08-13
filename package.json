@@ -6,7 +6,9 @@
     "format": "prettier --write \"src/**/*.{ts,js}\"",
     "lint": "prettier --check \"src/**/*.{ts,js}\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "ts-adt": "^1.0.1"
+  },
   "devDependencies": {
     "@snowpack/plugin-run-script": "^2.0.4",
     "@types/canvas-confetti": "^1.0.0",
