@@ -7,8 +7,10 @@
     "lint": "prettier --check \"src/**/*.{ts,js}\""
   },
   "dependencies": {
+    "@thi.ng/api": "^6.12.0",
     "@thi.ng/geom": "^1.11.3",
     "@thi.ng/hiccup-canvas": "^1.1.3",
+    "@thi.ng/vectors": "^4.6.0",
     "ts-adt": "^1.0.1"
   },
   "devDependencies": {

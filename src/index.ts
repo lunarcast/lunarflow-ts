@@ -20,9 +20,7 @@ window.onresize = resizeCanvas
 
 resizeCanvas()
 
-draw(context, group({}, [rect([100, 200], 20, { fill: 'yellow' })]))
-
-renderLambda(
+const shapes = renderLambda(
   ['b', 'a', 'f'],
   [
     { _type: 'call', func: 'f', argument: 'b', name: 'temp' },
@@ -35,3 +33,11 @@ renderLambda(
   ],
   'result'
 )
+
+const go = () => {
+  draw(context, group({}, shapes))
+
+  requestAnimationFrame(go)
+}
+
+go()
