@@ -1,14 +1,5 @@
 import type { Ast } from './lc'
-import {
-  rect,
-  Rect,
-  polygon,
-  Polygon,
-  Line,
-  line,
-  circle,
-  Circle
-} from '@thi.ng/geom'
+import { rect, Rect, polygon, Polygon, Line, line, Circle } from '@thi.ng/geom'
 import {
   lineSpace,
   lineWidth,
@@ -17,31 +8,81 @@ import {
   tgCallAngle,
   callOffset
 } from './constants'
-import { add2, sub2 } from '@thi.ng/vectors'
+import { add2, sub2, exp } from '@thi.ng/vectors'
 
-type LineDescriptor = { nextTo: string; name: string }
+type LineDescriptor = {
+  nextTo: string
+  name: string
+  argContinues: boolean
+  funcContinues: boolean
+}
 
 const getAstName = (ast: Ast): string =>
   ast.name ?? `${ast.func}(${ast.argument})`
 
-const generateAstLine = (ast: Ast): LineDescriptor => {
-  return { nextTo: ast.func, name: getAstName(ast) }
+const occurs = (name: string, ast: Ast[], past: number, output: string) => {
+  return (
+    output === name ||
+    ast.some(
+      (value, index) =>
+        (value.argument === name || value.func === name) && index > past
+    )
+  )
+}
+const generateAstLine = (
+  ast: Ast,
+  continues: (name: string) => boolean
+): LineDescriptor => {
+  return {
+    nextTo: ast.func,
+    name: getAstName(ast),
+    argContinues: continues(ast.argument),
+    funcContinues: continues(ast.func)
+  }
 }
 
 const reversed = <T>(array: T[]): T[] => [...array].reverse()
 
-const generateAstLines = (oldInputs: string[], ast: Ast[]) => {
-  const lines = ast.map(generateAstLine)
+type DataLine = {
+  name: string
+  continuity?: {
+    argument: boolean
+    function: boolean
+  }
+}
 
-  return reversed(
+const generateAstLines = (
+  oldInputs: string[],
+  ast: Ast[],
+  output: string
+): DataLine[] => {
+  const lines = ast.map((expression, index) =>
+    generateAstLine(expression, (name) => occurs(name, ast, index, output))
+  )
+
+  const names = reversed(
     lines.reduce(
-      (acc, curr) =>
-        acc.flatMap((element) =>
-          element === curr.nextTo ? [element, curr.name] : [element]
-        ),
-      oldInputs
+      (acc, current, index, arr) => {
+        return acc.flatMap((element) =>
+          element.name === current.nextTo
+            ? [
+                element,
+                {
+                  name: current.name,
+                  continuity: {
+                    argument: current.argContinues,
+                    function: current.funcContinues
+                  }
+                }
+              ]
+            : [element]
+        )
+      },
+      oldInputs.map((name) => ({ name }))
     )
   )
+
+  return names
 }
 
 const toIndexMap = <T>(array: T[]): Map<T, number> => {
@@ -70,15 +111,18 @@ const createSegment = (
   })
 }
 
+export const removeElement = <T>(el: T, arr: T[]) => arr.filter((a) => a !== el)
+
 export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
-  const lines = generateAstLines(inputs, ast)
-  const lineMap = toIndexMap(lines)
+  const lines = generateAstLines(inputs, ast, output)
+  const lineIndices = toIndexMap(lines.map(({ name }) => name))
+  const lineMap = new Map(lines.map((line) => [line.name, line]))
 
   const shapes: Array<Rect | Polygon | Line | Circle> = []
-  const activeLines: string[] = []
+  let activeLines: string[] = []
 
   for (const input of inputs) {
-    const index = lineMap.get(input)!
+    const index = lineIndices.get(input)!
 
     const shape = createSegment(index, 0)
 
@@ -95,8 +139,8 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
 
     const name = getAstName(expression)
 
-    const startIndex = lineMap.get(expression.argument)!
-    const endIndex = lineMap.get(name)!
+    const startIndex = lineIndices.get(expression.argument)!
+    const endIndex = lineIndices.get(name)!
 
     const start = [
       offset + callOffset,
@@ -132,14 +176,32 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
     const visibleXDiff = diff[0] + callOffset * 2
 
     for (const line of activeLines) {
-      if (line === name || line === expression.argument) continue
+      if (
+        line === name ||
+        (line === expression.argument &&
+          !lineMap.get(name)?.continuity?.argument === true)
+      )
+        continue
 
-      const index = lineMap.get(line)!
+      const index = lineIndices.get(line)!
 
       shapes.push(createSegment(index, offset, visibleXDiff))
     }
 
     activeLines.push(name)
+
+    const continuity = lineMap.get(name)?.continuity
+
+    if (continuity) {
+      if (!continuity.argument) {
+        activeLines = removeElement(expression.argument, activeLines)
+      }
+
+      if (!continuity.function) {
+        activeLines = removeElement(expression.func, activeLines)
+      }
+    }
+
     offset += visibleXDiff
   }
 
