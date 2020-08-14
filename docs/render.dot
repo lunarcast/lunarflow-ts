@@ -1,0 +1,36 @@
+digraph {
+    subgraph {rank=min;
+     Number;
+    Successor;
+    Zero;}
+
+    subgraph cluster_main_lambda {
+        rank=same;
+        G;H;
+        
+        "G(Successor)" [shape=triangle,color=red];
+        {G;Successor;} -> "G(Successor)";
+        
+        "H(G(Successor))" [shape=triangle,color=red];
+        {H,"G(Successor)"} -> "H(G(Successor))"
+    }
+
+    subgraph cluster_always_0 {
+        A;
+        Zero -> "always_0 output"
+    }
+
+    "HGS(Number)" [shape=triangle,color=red];
+    {"H(G(Successor))";Number;} -> "HGS(Number)";
+    
+    "ao(HGSN)" [shape=triangle,color=red];
+    {"HGS(Number)";"always_0 output";} -> "ao(HGSN)"
+
+    subgraph cluster_identity {
+        X -> Identity
+    }
+
+    "AOGI" [shape=triangle,color=red];
+    {"ao(HGSN)";Identity;} -> "AOGI"  
+
+}
