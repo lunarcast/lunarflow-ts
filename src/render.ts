@@ -1,14 +1,6 @@
 import type { Ast } from './lc'
-import {
-  rect,
-  Rect,
-  polygon,
-  Polygon,
-  Line,
-  line,
-  Circle,
-  circle
-} from '@thi.ng/geom'
+import { rect, polygon, circle } from '@thi.ng/geom'
+import type { IHiccupShape } from '@thi.ng/geom-api'
 import {
   lineSpace,
   lineWidth,
@@ -16,9 +8,10 @@ import {
   sinCallAngle,
   tgCallAngle,
   callOffset,
-  intersectionColor
+  intersectionColor,
+  lineColors
 } from './constants'
-import { add2, sub2, divN2 } from '@thi.ng/vectors'
+import { add2, sub2 } from '@thi.ng/vectors'
 
 type LineDescriptor = {
   nextTo: string
@@ -59,6 +52,7 @@ type DataLine = {
     argument: boolean
     function: boolean
   }
+  color: string
 }
 
 const generateAstLines = (
@@ -72,7 +66,7 @@ const generateAstLines = (
 
   const names = reversed(
     lines.reduce(
-      (acc, current, index, arr) => {
+      (acc, current) => {
         return acc.flatMap((element) =>
           element.name === current.nextTo
             ? [
@@ -82,13 +76,17 @@ const generateAstLines = (
                   continuity: {
                     argument: current.argContinues,
                     function: current.funcContinues
-                  }
+                  },
+                  color: element.color
                 }
               ]
             : [element]
         )
       },
-      oldInputs.map((name) => ({ name }))
+      oldInputs.map((name) => ({
+        name,
+        color: lineColors.next().value as string
+      }))
     )
   )
 
@@ -114,10 +112,11 @@ const getLineYPosition = (index: number): number => {
 const createSegment = (
   index: number,
   offset: number,
+  fill = 'white',
   length = segmentLength
 ) => {
   return rect([offset, getLineYPosition(index)], [length, lineWidth], {
-    fill: '#F37878'
+    fill
   })
 }
 
@@ -128,13 +127,13 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
   const lineIndices = toIndexMap(lines.map(({ name }) => name))
   const lineMap = new Map(lines.map((line) => [line.name, line]))
 
-  const shapes: Array<Rect | Polygon | Line | Circle> = []
+  const shapes: Array<IHiccupShape> = []
   let activeLines: string[] = []
 
   for (const input of inputs) {
     const index = lineIndices.get(input)!
 
-    const shape = createSegment(index, 0)
+    const shape = createSegment(index, 0, lineMap.get(input)?.color)
 
     shapes.push(shape)
     activeLines.push(input)
@@ -143,15 +142,13 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
   let offset = segmentLength
 
   for (const expression of ast) {
-    shapes.push(
-      line([offset, 0], [offset, window.innerHeight], { stroke: 'white' })
-    )
-
     const name = getAstName(expression)
 
     const startIndex = lineIndices.get(expression.argument)!
     const endIndex = lineIndices.get(name)!
     const functionIndex = lineIndices.get(expression.func)!
+    const argColor = lineMap.get(expression.argument)?.color
+    const functionColor = lineMap.get(expression.func)?.color
 
     const start = [
       offset + callOffset,
@@ -187,7 +184,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
         anglePoint,
         [offset, getLineYPosition(startIndex)]
       ],
-      { fill: 'yellow' }
+      { fill: argColor }
     )
 
     const functionToResult = polygon(
@@ -200,7 +197,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
         add2([], anglePoint, diff)
       ],
       {
-        fill: 'red'
+        fill: functionColor
       }
     )
 
@@ -217,14 +214,16 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
 
       const index = lineIndices.get(line)!
 
-      shapes.push(createSegment(index, offset, visibleXDiff))
+      shapes.push(
+        createSegment(index, offset, lineMap.get(line)?.color, visibleXDiff)
+      )
     }
 
     shapes.push(
       rect(
         [offset, getLineYPosition(functionIndex)],
         [intersection[0] - offset, lineWidth],
-        { fill: '#F37878' }
+        { fill: functionColor }
       )
     )
 
