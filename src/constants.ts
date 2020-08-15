@@ -5,3 +5,4 @@ export const tgCallAngle = Math.tan(callAngle)
 export const lineWidth = 60
 export const lineSpace = 100
 export const callOffset = 100
+export const intersectionColor = '#3E386E'

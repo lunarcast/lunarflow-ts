@@ -1,14 +1,24 @@
 import type { Ast } from './lc'
-import { rect, Rect, polygon, Polygon, Line, line, Circle } from '@thi.ng/geom'
+import {
+  rect,
+  Rect,
+  polygon,
+  Polygon,
+  Line,
+  line,
+  Circle,
+  circle
+} from '@thi.ng/geom'
 import {
   lineSpace,
   lineWidth,
   segmentLength,
   sinCallAngle,
   tgCallAngle,
-  callOffset
+  callOffset,
+  intersectionColor
 } from './constants'
-import { add2, sub2, exp } from '@thi.ng/vectors'
+import { add2, sub2, divN2 } from '@thi.ng/vectors'
 
 type LineDescriptor = {
   nextTo: string
@@ -141,6 +151,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
 
     const startIndex = lineIndices.get(expression.argument)!
     const endIndex = lineIndices.get(name)!
+    const functionIndex = lineIndices.get(expression.func)!
 
     const start = [
       offset + callOffset,
@@ -149,28 +160,48 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
 
     const endY = getLineYPosition(endIndex) + lineWidth
     const endX = start[0] + tgCallAngle * (-endY + start[1])
+    const intersectionY = getLineYPosition(functionIndex) + lineWidth / 2
+    const intersectionX = start[0] + tgCallAngle * (-intersectionY + start[1])
+
     const diff = sub2(null, [endX, endY], start)
 
     // I used geometry to come up with this weird formula.
     // There might be a shorter form, but I'm too lazy to find it
-    const intersectionOffset =
+    const anglePointOffset =
       tgCallAngle * (lineWidth / sinCallAngle - lineWidth)
 
-    const intersectionPoint = sub2([], start, [intersectionOffset, lineWidth])
-    shapes.push(
-      polygon(
-        [
-          [offset, getLineYPosition(startIndex) + lineWidth],
-          start,
-          [endX, endY],
-          [endX + callOffset, endY],
-          [endX + callOffset, endY - lineWidth],
-          add2([], intersectionPoint, diff),
-          intersectionPoint,
-          [offset, getLineYPosition(startIndex)]
-        ],
-        { fill: '#F37878' }
-      )
+    const anglePoint = sub2([], start, [anglePointOffset, lineWidth])
+    const intersection = [intersectionX, intersectionY]
+
+    const intersections = [
+      // add2([], intersection, [lineWidth / 2, 0]),
+      intersection,
+      sub2([], intersection, [lineWidth, 0])
+    ]
+
+    const argToFunction = polygon(
+      [
+        [offset, getLineYPosition(startIndex) + lineWidth],
+        start,
+        ...intersections,
+        anglePoint,
+        [offset, getLineYPosition(startIndex)]
+      ],
+      { fill: 'yellow' }
+    )
+
+    const functionToResult = polygon(
+      [
+        intersections[1],
+        intersections[0],
+        [endX, endY],
+        [endX + callOffset, endY],
+        [endX + callOffset, endY - lineWidth],
+        add2([], anglePoint, diff)
+      ],
+      {
+        fill: 'red'
+      }
     )
 
     const visibleXDiff = diff[0] + callOffset * 2
@@ -178,6 +209,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
     for (const line of activeLines) {
       if (
         line === name ||
+        line === expression.func ||
         (line === expression.argument &&
           !lineMap.get(name)?.continuity?.argument === true)
       )
@@ -187,6 +219,22 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
 
       shapes.push(createSegment(index, offset, visibleXDiff))
     }
+
+    shapes.push(
+      rect(
+        [offset, getLineYPosition(functionIndex)],
+        [intersection[0] - offset, lineWidth],
+        { fill: '#F37878' }
+      )
+    )
+
+    shapes.push(argToFunction, functionToResult)
+
+    shapes.push(
+      circle(sub2([], intersection, [lineWidth / 2, 0]), lineWidth / 1.1, {
+        fill: intersectionColor
+      })
+    )
 
     activeLines.push(name)
 
