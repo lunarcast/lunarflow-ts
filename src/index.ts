@@ -1,4 +1,4 @@
-import { Ast } from './lc'
+import type { Ast } from './lc'
 import { draw } from '@thi.ng/hiccup-canvas'
 import { group, rect } from '@thi.ng/geom'
 import { renderLambda } from './render'
@@ -20,17 +20,26 @@ window.onresize = resizeCanvas
 
 resizeCanvas()
 
-const shapes = renderLambda(
-  ['b', 'a', 'f'],
-  [
-    { _type: 'call', func: 'f', argument: 'b', name: 'temp' },
-    {
+const mkNumber = (n: number): Ast[] => {
+  const result: Ast[] = []
+
+  for (let index = 0; index < n; index++) {
+    const arg = index === 0 ? 'zero' : String(index - 1)
+
+    result.push({
       _type: 'call',
-      func: 'temp',
-      argument: 'a',
-      name: 'result'
-    }
-  ],
+      argument: arg,
+      func: 'succ',
+      name: index + 1 === n ? 'result' : String(index)
+    })
+  }
+
+  return result
+}
+
+const shapes = renderLambda(
+  ['x'],
+  [{ _type: 'call', argument: 'x', name: 'result', func: 'x' }],
   'result'
 )
 

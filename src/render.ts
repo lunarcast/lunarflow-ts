@@ -1,5 +1,5 @@
 import type { Ast } from './lc'
-import { rect, polygon, circle } from '@thi.ng/geom'
+import { rect, polygon, circle, line } from '@thi.ng/geom'
 import type { IHiccupShape } from '@thi.ng/geom-api'
 import {
   lineSpace,
@@ -8,14 +8,16 @@ import {
   sinCallAngle,
   tgCallAngle,
   callOffset,
-  intersectionColor,
-  lineColors
+  lineColors,
+  cosCallAngle,
+  intersectionColor
 } from './constants'
 import { add2, sub2 } from '@thi.ng/vectors'
 
 type LineDescriptor = {
   nextTo: string
   name: string
+  argName: string
   argContinues: boolean
   funcContinues: boolean
 }
@@ -38,6 +40,7 @@ const generateAstLine = (
 ): LineDescriptor => {
   return {
     nextTo: ast.func,
+    argName: ast.argument,
     name: getAstName(ast),
     argContinues: continues(ast.argument),
     funcContinues: continues(ast.func)
@@ -46,13 +49,52 @@ const generateAstLine = (
 
 const reversed = <T>(array: T[]): T[] => [...array].reverse()
 
+const enum SpawnDirection {
+  Up,
+  Down
+}
+
 type DataLine = {
   name: string
   continuity?: {
     argument: boolean
     function: boolean
   }
+  spawnDirection?: SpawnDirection
   color: string
+}
+
+const isBefore = <T>(
+  a: T,
+  b: T,
+  arr: T[],
+  compare: (a: T, b: T) => boolean = (a, b) => a === b
+): boolean => {
+  for (const el of arr) {
+    if (compare(el, a)) return true
+    if (compare(el, b)) return false
+  }
+
+  return false
+}
+
+const formatLines = (
+  func: DataLine,
+  arg: string,
+  result: Omit<DataLine, 'spawnDirection'>,
+  arr: DataLine[]
+) => {
+  if (
+    isBefore(
+      func.name,
+      arg,
+      arr.map(({ name }) => name)
+    )
+  ) {
+    return [{ ...result, spawnDirection: SpawnDirection.Down }, func]
+  }
+
+  return [func, { ...result, spawnDirection: SpawnDirection.Up }]
 }
 
 const generateAstLines = (
@@ -69,8 +111,9 @@ const generateAstLines = (
       (acc, current) => {
         return acc.flatMap((element) =>
           element.name === current.nextTo
-            ? [
+            ? formatLines(
                 element,
+                current.argName,
                 {
                   name: current.name,
                   continuity: {
@@ -78,8 +121,9 @@ const generateAstLines = (
                     function: current.funcContinues
                   },
                   color: element.color
-                }
-              ]
+                },
+                acc
+              )
             : [element]
         )
       },
@@ -149,16 +193,21 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
     const functionIndex = lineIndices.get(expression.func)!
     const argColor = lineMap.get(expression.argument)?.color
     const functionColor = lineMap.get(expression.func)?.color
+    const direction =
+      lineMap.get(name)?.spawnDirection === SpawnDirection.Down ? -1 : 1
+
+    const whenUp = (a: number, b = 0) => (direction === 1 ? a : b)
 
     const start = [
       offset + callOffset,
-      getLineYPosition(startIndex) + lineWidth
+      getLineYPosition(startIndex) + whenUp(lineWidth)
     ]
 
-    const endY = getLineYPosition(endIndex) + lineWidth
-    const endX = start[0] + tgCallAngle * (-endY + start[1])
+    const endY = getLineYPosition(endIndex) + whenUp(lineWidth)
+    const endX = start[0] + direction * tgCallAngle * (-endY + start[1])
     const intersectionY = getLineYPosition(functionIndex) + lineWidth / 2
-    const intersectionX = start[0] + tgCallAngle * (-intersectionY + start[1])
+    const intersectionX =
+      start[0] + tgCallAngle * direction * (-intersectionY + start[1])
 
     const diff = sub2(null, [endX, endY], start)
 
@@ -167,48 +216,67 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
     const anglePointOffset =
       tgCallAngle * (lineWidth / sinCallAngle - lineWidth)
 
-    const anglePoint = sub2([], start, [anglePointOffset, lineWidth])
+    const anglePoint = sub2([], start, [
+      anglePointOffset,
+      direction * lineWidth
+    ])
     const intersection = [intersectionX, intersectionY]
-
     const intersections = [
-      // add2([], intersection, [lineWidth / 2, 0]),
       intersection,
-      sub2([], intersection, [lineWidth, 0])
+      sub2([], intersection, [lineWidth / cosCallAngle, 0])
     ]
 
     const argToFunction = polygon(
-      [
-        [offset, getLineYPosition(startIndex) + lineWidth],
-        start,
-        ...intersections,
-        anglePoint,
-        [offset, getLineYPosition(startIndex)]
-      ],
+      direction === 1
+        ? [
+            [offset, getLineYPosition(startIndex) + lineWidth],
+            start,
+            ...intersections,
+            anglePoint,
+            [offset, getLineYPosition(startIndex)]
+          ]
+        : [
+            [offset, getLineYPosition(startIndex) + lineWidth],
+            anglePoint,
+            intersections[1],
+            intersections[0],
+            start,
+            [offset, getLineYPosition(startIndex)]
+          ],
       { fill: argColor }
     )
 
     const functionToResult = polygon(
-      [
-        intersections[1],
-        intersections[0],
-        [endX, endY],
-        [endX + callOffset, endY],
-        [endX + callOffset, endY - lineWidth],
-        add2([], anglePoint, diff)
-      ],
+      direction === 1
+        ? [
+            intersections[1],
+            intersections[0],
+            [endX, endY],
+            [endX + callOffset, endY],
+            [endX + callOffset, endY - lineWidth],
+            add2([], anglePoint, diff)
+          ]
+        : [
+            intersections[1],
+            intersections[0],
+            [endX, endY],
+            [endX + callOffset, endY],
+            [endX + callOffset, endY + lineWidth],
+            add2([], anglePoint, diff)
+          ],
       {
         fill: functionColor
       }
     )
 
     const visibleXDiff = diff[0] + callOffset * 2
+    const continuity = lineMap.get(name)?.continuity
 
     for (const line of activeLines) {
       if (
         line === name ||
-        line === expression.func ||
-        (line === expression.argument &&
-          !lineMap.get(name)?.continuity?.argument === true)
+        (line === expression.func && continuity?.function !== true) ||
+        (line === expression.argument && continuity?.argument !== true)
       )
         continue
 
@@ -236,8 +304,6 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
     )
 
     activeLines.push(name)
-
-    const continuity = lineMap.get(name)?.continuity
 
     if (continuity) {
       if (!continuity.argument) {
