@@ -12,8 +12,8 @@ export const intersectionColor = '#3E386E'
 
 export const lineColors = cycle([
   '#F37878',
-  '#AA59AB',
-  '#BBB684',
   '#21BEE0',
-  '#38F461'
+  '#AA59AB',
+  '#38F461',
+  '#BBB684'
 ])

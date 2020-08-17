@@ -22,9 +22,6 @@ type LineDescriptor = {
   funcContinues: boolean
 }
 
-const getAstName = (ast: Ast): string =>
-  ast.name ?? `${ast.func}(${ast.argument})`
-
 const occurs = (name: string, ast: Ast[], past: number, output: string) => {
   return (
     output === name ||
@@ -41,7 +38,7 @@ const generateAstLine = (
   return {
     nextTo: ast.func,
     argName: ast.argument,
-    name: getAstName(ast),
+    name: ast.name,
     argContinues: continues(ast.argument),
     funcContinues: continues(ast.func)
   }
@@ -186,7 +183,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
   let offset = segmentLength
 
   for (const expression of ast) {
-    const name = getAstName(expression)
+    const name = expression.name
 
     const startIndex = lineIndices.get(expression.argument)!
     const endIndex = lineIndices.get(name)!

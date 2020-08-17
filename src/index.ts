@@ -38,8 +38,27 @@ const mkNumber = (n: number): Ast[] => {
 }
 
 const shapes = renderLambda(
-  ['x'],
-  [{ _type: 'call', argument: 'x', name: 'result', func: 'x' }],
+  ['num', 'succ', 'zero'],
+  [
+    {
+      _type: 'call',
+      func: 'num',
+      argument: 'succ',
+      name: "num'"
+    },
+    {
+      _type: 'call',
+      func: "num'",
+      argument: 'zero',
+      name: "num''"
+    },
+    {
+      _type: 'call',
+      func: 'succ',
+      argument: "num''",
+      name: 'result'
+    }
+  ],
   'result'
 )
 
