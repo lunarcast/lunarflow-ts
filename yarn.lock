@@ -134,6 +134,13 @@
   dependencies:
     tslib "^2.0.0"
 
+"@thi.ng/api@^6.12.1":
+  version "6.12.1"
+  resolved "https://registry.yarnpkg.com/@thi.ng/api/-/api-6.12.1.tgz#5a3022f3a83561f1e58b92d94e4dfcd9b2d94848"
+  integrity sha512-40tRgiZxr6XOPcC/kpRGjm4vAh2QGorZVq8tdqgpKY1nhdsx3F5ZkRqqgPaTehNPffzd3ouz/ximJTkOnriO7g==
+  dependencies:
+    tslib "^2.0.1"
+
 "@thi.ng/arrays@^0.6.13":
   version "0.6.13"
   resolved "https://registry.yarnpkg.com/@thi.ng/arrays/-/arrays-0.6.13.tgz#860d7f44142655e67672ac047d8aeda84738fc3d"
@@ -190,6 +197,14 @@
     "@thi.ng/api" "^6.12.0"
     "@thi.ng/errors" "^1.2.17"
 
+"@thi.ng/compose@^1.4.14":
+  version "1.4.14"
+  resolved "https://registry.yarnpkg.com/@thi.ng/compose/-/compose-1.4.14.tgz#d3c2b14885537acc97c67c3a7cc4a3b41795648b"
+  integrity sha512-K0O0h0vIC68iMQrMpIvjblwfpVHCvkaUyVGGs2MQ30MAFf6g/ypyqbENHffguVtH3t3PefjLfViKAV73YZwkiA==
+  dependencies:
+    "@thi.ng/api" "^6.12.1"
+    "@thi.ng/errors" "^1.2.18"
+
 "@thi.ng/defmulti@^1.2.21":
   version "1.2.21"
   resolved "https://registry.yarnpkg.com/@thi.ng/defmulti/-/defmulti-1.2.21.tgz#bfda29e13acf425a2deada31c2c52fa1041d92a7"
@@ -209,6 +224,13 @@
   integrity sha512-INBjF2IhKRum1BVkxuPZ4kVaKFm1fnXNYTbEW9Hq9oo/tpRs5OhGJ+dMmnWeC8qUpS+VThV7c8htcAwAfzuMlA==
   dependencies:
     tslib "^2.0.0"
+
+"@thi.ng/errors@^1.2.18":
+  version "1.2.18"
+  resolved "https://registry.yarnpkg.com/@thi.ng/errors/-/errors-1.2.18.tgz#97ffe14089558adc9a03cfe14d756141389e6f56"
+  integrity sha512-+ttV/ivqqGjRMfbUTssqoo9FvTAekZDGCyabByfqAvCkOdmLBJPg9BKaOoitsyJIN9AGqCARrbrHRzgfbHyaVA==
+  dependencies:
+    tslib "^2.0.1"
 
 "@thi.ng/geom-api@^1.0.29":
   version "1.0.29"
@@ -475,11 +497,6 @@
     "@types/keyv" "*"
     "@types/node" "*"
     "@types/responselike" "*"
-
-"@types/canvas-confetti@^1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@types/canvas-confetti/-/canvas-confetti-1.0.0.tgz#784fca12934ae3a8b50213672e7747b2efb0ffa7"
-  integrity sha512-Z3Eh7qlYdi9cvotmreZjqxaUSwpUYu/s2uzSvnGgktuHhpj8FHq6JSJLVYP3R4YNZN/d8nNOG5y2cKmautyDCQ==
 
 "@types/estree@*":
   version "0.0.45"
@@ -1772,7 +1789,7 @@ ts-adt@^1.0.1:
   resolved "https://registry.yarnpkg.com/ts-adt/-/ts-adt-1.0.1.tgz#9367b495649bc1f21fbdeacec2a3e58aff8bcf97"
   integrity sha512-MfSct+iluJ4u6EjJZL5L6J9ebp1oZz2xdBK2+Y522SFK7MIg8GP7QDFrry/g4CjVEqPfKsg1IQOgwMOE+8xRIg==
 
-tslib@^2.0.0:
+tslib@^2.0.0, tslib@^2.0.1:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.0.1.tgz#410eb0d113e5b6356490eec749603725b021b43e"
   integrity sha512-SgIkNheinmEBgx1IUNirK0TUD4X9yjjBRTqqjggWCU3pUEqIk3/Uwl3yRixYKT6WjQuGiwDv4NomL3wqRCj+CQ==

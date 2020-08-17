@@ -13,6 +13,7 @@ import {
   intersectionColor
 } from './constants'
 import { add2, sub2 } from '@thi.ng/vectors'
+import { reversed } from './utils'
 
 type LineDescriptor = {
   nextTo: string
@@ -43,8 +44,6 @@ const generateAstLine = (
     funcContinues: continues(ast.func)
   }
 }
-
-const reversed = <T>(array: T[]): T[] => [...array].reverse()
 
 const enum SpawnDirection {
   Up,

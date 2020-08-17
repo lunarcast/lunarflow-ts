@@ -2,6 +2,7 @@ import type { Ast } from './lc'
 import { draw } from '@thi.ng/hiccup-canvas'
 import { group, rect } from '@thi.ng/geom'
 import { renderLambda } from './render'
+import { Program, startLayout } from './layout'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -37,9 +38,8 @@ const mkNumber = (n: number): Ast[] => {
   return result
 }
 
-const shapes = renderLambda(
-  ['num', 'succ', 'zero'],
-  [
+const program: Program = {
+  expressions: [
     {
       _type: 'call',
       func: 'num',
@@ -59,7 +59,15 @@ const shapes = renderLambda(
       name: 'result'
     }
   ],
-  'result'
+  output: 'result'
+}
+
+console.log(startLayout(['num', 'succ', 'zero'], program))
+
+const shapes = renderLambda(
+  ['num', 'succ', 'zero'],
+  program.expressions,
+  program.output
 )
 
 const go = () => {
