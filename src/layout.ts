@@ -1,4 +1,14 @@
-import type { Ast, Lambda, Program, Call } from './lc'
+import {
+  Ast,
+  Lambda,
+  Program,
+  Call,
+  occursInProgram,
+  lambdaToProgram,
+  unconsProgram,
+  free,
+  occurs
+} from './lc'
 import type { ADT } from 'ts-adt'
 import TsAdt from 'ts-adt'
 import { lineColors } from './constants'
@@ -21,7 +31,9 @@ export type ILine = {
 }
 
 export type LayoutCell = ADT<{
-  line: ILine
+  line: ILine & {
+    continues: boolean
+  }
   fork: ILine & {
     continues: boolean
     to: string
@@ -39,10 +51,11 @@ export type LayoutCell = ADT<{
 }>
 
 // Constructors for layout cells
-const line = (color: string, name: string): LayoutCell => ({
+const line = (color: string, name: string, continues = true): LayoutCell => ({
   _type: 'line',
   color,
-  name
+  name,
+  continues
 })
 
 const nothing: LayoutCell = { _type: 'nothing' }
@@ -60,55 +73,16 @@ export type LayoutColumn = {
 }
 
 export type Layout = {
-  lines: LayoutColumn[]
+  columns: LayoutColumn[]
 }
 
-/**
- * Group multiple lambdas together in a single program.
- *
- * @param lambda The lambda to start from.
- */
-const getProgram = (lambda: Lambda): Program => {
-  if (
-    lambda.expressions.length !== 1 ||
-    lambda.expressions[0]._type !== 'lambda'
-  ) {
-    return { ...lambda, arguments: [lambda.argument] }
-  }
-
-  const nested = getProgram(lambda)
-
-  return {
-    ...nested,
-    arguments: [lambda.argument, ...nested.arguments]
-  }
-}
-
-const occurs = (name: string, expression: Ast): boolean => {
-  if (expression._type === 'call') {
-    return expression.argument === name || expression.func === name
-  }
-
-  if (expression.argument === name) return false
-
-  return expression.output === name || occursIn(name, expression.expressions)
-}
-
-function occursIn(name: string, expressions: Ast[]): boolean {
-  return expressions.some((expression) => occurs(name, expression))
-}
-
-const occursInProgram = (name: string, program: Program): boolean => {
-  if (program.arguments.includes(name)) {
-    return false
-  }
-
-  return program.output === name || occursIn(name, program.expressions)
+const emptyLayout: Layout = {
+  columns: []
 }
 
 const mergeLayouts = (first: Layout, second: Layout): Layout => {
   return {
-    lines: [...first.lines, ...second.lines]
+    columns: [...first.columns, ...second.columns]
   }
 }
 
@@ -119,25 +93,9 @@ const mergeLayouts = (first: Layout, second: Layout): Layout => {
  */
 export const unconsLayout = (layout: Layout): [LayoutColumn, Layout] => {
   return [
-    layout.lines[0],
+    layout.columns[0],
     {
-      lines: layout.lines.slice(1)
-    }
-  ]
-}
-
-/**
- * Split a program into its head and the rest.
- *
- * @param program The program to split.
- */
-const unconsProgram = (program: Program): [Ast, Program] => {
-  return [
-    program.expressions[0],
-    {
-      ...program,
-      arguments: [],
-      expressions: program.expressions.slice(1)
+      columns: layout.columns.slice(1)
     }
   ]
 }
@@ -242,9 +200,9 @@ const mapColumn = (
  * @param nextTo The index to add the line after.
  * @param before If this is true the line will be inserted before the target index, not after it,
  */
-const createLine = (layout: Layout, nextTo: number, before = false) => {
+const createLine = (layout: Layout, nextTo: number, before = false): Layout => {
   return {
-    lines: layout.lines.map((line) => ({
+    columns: layout.columns.map((line) => ({
       data: line.data,
       cells: line.cells.flatMap((cell, index) => {
         if (index !== nextTo) {
@@ -257,28 +215,185 @@ const createLine = (layout: Layout, nextTo: number, before = false) => {
   }
 }
 
-const createLayout = (program: Program, previous: Layout): Layout => {
+export function pushCells(
+  layout: Layout,
+  cells: LayoutCell[],
+  nextTo: number
+): Layout {
+  const emptyCells = cells.map(constantly(nothing))
+
+  return {
+    columns: layout.columns.map((column, columnIndex) => {
+      const isLast = columnIndex === layout.columns.length - 1
+
+      return {
+        data: column.data,
+        cells:
+          column.cells.length === 0
+            ? isLast
+              ? cells
+              : emptyCells
+            : column.cells.flatMap((cell, index) => {
+                if (index === nextTo) {
+                  if (isLast) return [cell, ...cells]
+
+                  return [cell, ...emptyCells]
+                }
+
+                return [cell]
+              })
+      }
+    })
+  }
+}
+
+/**
+ * Create a new column extending an existing layout.
+ *
+ * @param layout The layout to extend.
+ * @param data Data to attach to the new column.
+ */
+const extendLayout = (
+  layout: Layout,
+  data: LayoutColumn['data'] = { _type: 'empty' }
+): Layout => {
+  const columnCount = layout.columns.length
+
+  return {
+    columns: [
+      ...layout.columns,
+      {
+        data,
+        cells: columnCount === 0 ? [] : layout.columns[columnCount - 1].cells
+      }
+    ]
+  }
+}
+
+const advanceCell: Fn<LayoutCell, LayoutCell> = match({
+  line: ({ color, name, continues }) =>
+    continues ? line(color, name) : nothing,
+  created: ({ color, name }) => line(color, name),
+  called: ({ color, continues, name }) =>
+    continues ? line(color, name) : nothing,
+  fork: ({ continues, color, name }) =>
+    continues ? line(color, name) : nothing,
+  nothing: constantly(nothing)
+})
+
+/**
+ * Create a new column in a layout where a cell has a changed name.
+ *
+ * @param layout The layout to extend with the renaming.
+ * @param oldName The old name of the cell.
+ * @param newName The new name of the cell.
+ */
+const renameCell = (
+  layout: Layout,
+  oldName: string,
+  newName: string
+): Layout => {
+  if (layout.columns.length === 0)
+    throw new Error(`Cannot rename cell in empty layout`)
+
+  const lastColumn = layout.columns[layout.columns.length - 1]
+
+  return mergeLayouts(layout, {
+    columns: [
+      {
+        data: { _type: 'empty' },
+        cells: lastColumn.cells.map((cell) => {
+          const advanced = advanceCell(cell)
+
+          if (advanced._type !== 'line') return advanced
+
+          return line(
+            advanced.color,
+            advanced.name === oldName ? newName : advanced.name
+          )
+        })
+      }
+    ]
+  })
+}
+
+/**
+ * Different kind of spots we can place nested lambdas in.
+ */
+type NestedProgramPlacement = ADT<{
+  nextTo: { name: string }
+  far: {}
+}>
+
+/**
+ * Find a spot to place a nested lambda.
+ *
+ * @param expression The expression we can search trough.
+ */
+function getNestedProgramPlacement(expression: Ast): NestedProgramPlacement {
+  const freeTerms = free(expression, new Set())
+  const firstFreeTerm = freeTerms.next()
+
+  // When there is at least a free term
+  if (!firstFreeTerm.done) {
+    return {
+      _type: 'nextTo',
+      name: firstFreeTerm.value
+    }
+  }
+
+  // TODO: do this in a smarter way
+
+  return { _type: 'far' }
+}
+/**
+ * Continue a layout given the current and previous programs.
+ *
+ * @param program The current program we are working on.
+ * @param previous The previous program we solved.
+ */
+const continueLayout = (program: Program, previous: Layout): Layout => {
   if (program.expressions.length === 0) {
     return previous
   }
 
-  const [lastLayer] = reversed(previous.lines)
+  // console.log('Continuing layout')
+  // console.log(program, previous)
+
+  const [lastLayer] = reversed(previous.columns)
   const [expression, remainingProgram] = unconsProgram(program)
 
-  if (expression._type !== 'call') throw new Error('Cannot handle lambdas yet')
+  if (expression._type !== 'call') {
+    const program = lambdaToProgram(expression)
+    const placement = getNestedProgramPlacement(expression)
 
-  const withContinuations = mapColumn(
-    lastLayer,
-    match({
-      line: ({ color, name }) => line(color, name),
-      created: ({ color, name }) => line(color, name),
-      called: ({ color, continues, name }) =>
-        continues ? line(color, name) : nothing,
-      fork: ({ continues, color, name }) =>
-        continues ? line(color, name) : nothing,
-      nothing: constantly(nothing)
-    })
-  )
+    console.log({ program, expression })
+
+    if (placement._type === 'far') {
+      console.log('placed far')
+    } else {
+      console.log(`Placed next to ${placement.name}`)
+
+      // TODO: spawn this in better positions
+      const nested = startLayout(
+        program,
+        lastLayer.cells.findIndex(
+          (cell) => cell._type !== 'nothing' && cell.name === placement.name
+        ),
+        previous
+      )
+
+      const withRename = renameCell(nested, program.output, program.name)
+
+      return continueLayout(remainingProgram, withRename)
+    }
+
+    throw new Error('Cannot handle lambdas yet')
+  }
+
+  console.log(`yohoohohoho ${expression.name}`)
+
+  const withContinuations = mapColumn(lastLayer, advanceCell)
 
   const spot = findResultSpot(expression, withContinuations.cells)
 
@@ -359,13 +474,22 @@ const createLayout = (program: Program, previous: Layout): Layout => {
       : createLine(previous, spot.nextTo, spot.before)
 
   const layout = mergeLayouts(updatedPrevious, {
-    lines: [layer]
+    columns: [layer]
   })
 
-  return createLayout(remainingProgram, layout)
+  return continueLayout(remainingProgram, layout)
 }
 
-export const startLayout = (program: Program): Layout => {
+/**
+ * Create a layout for a program.
+ *
+ * @param program THe program to create the layout of.
+ */
+export function startLayout(
+  program: Program,
+  nextTo = 0,
+  previousLayout: Layout = emptyLayout
+): Layout {
   const programBody: Program = { ...program, arguments: [] }
 
   const firstLayer: LayoutCell[] = program.arguments.map((name) => {
@@ -379,7 +503,19 @@ export const startLayout = (program: Program): Layout => {
     }
   })
 
-  return createLayout(programBody, {
-    lines: [{ cells: firstLayer, data: { _type: 'empty' } }]
+  const withCells = pushCells(extendLayout(previousLayout), firstLayer, nextTo)
+
+  console.log('Started layout')
+
+  console.log({
+    // program,
+
+    nextTo,
+    previousLayout,
+    programBody,
+    firstLayer,
+    withCells
   })
+
+  return continueLayout(programBody, withCells)
 }

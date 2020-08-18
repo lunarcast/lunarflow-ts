@@ -60,7 +60,7 @@ const renderSegment = (
 }
 
 export const renderLambda = (layout: Layout, offset = 0): IHiccupShape[] => {
-  if (layout.lines.length === 0) return []
+  if (layout.columns.length === 0) return []
 
   const [{ cells, data }, remainingLayout] = unconsLayout(layout)
 
@@ -86,6 +86,8 @@ export const renderLambda = (layout: Layout, offset = 0): IHiccupShape[] => {
     const functionIndex = lineIndices.get(data.called)!
 
     const functionCell = lineMap.get(data.called)!
+    console.log(functionCell, data, lineMap)
+
     const argument = lineMap.get(data.argument)
 
     if (functionCell._type !== 'called')
