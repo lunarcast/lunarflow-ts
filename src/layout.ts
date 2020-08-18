@@ -1,4 +1,4 @@
-import type { Ast } from './lc'
+import type { Ast, Lambda, Program, Call } from './lc'
 import type { ADT } from 'ts-adt'
 import TsAdt from 'ts-adt'
 import { lineColors } from './constants'
@@ -44,6 +44,7 @@ const line = (color: string, name: string): LayoutCell => ({
   color,
   name
 })
+
 const nothing: LayoutCell = { _type: 'nothing' }
 
 export type LayoutColumn = {
@@ -62,18 +63,47 @@ export type Layout = {
   lines: LayoutColumn[]
 }
 
-export type Program = {
-  expressions: Ast[]
-  output: string
+/**
+ * Group multiple lambdas together in a single program.
+ *
+ * @param lambda The lambda to start from.
+ */
+const getProgram = (lambda: Lambda): Program => {
+  if (
+    lambda.expressions.length !== 1 ||
+    lambda.expressions[0]._type !== 'lambda'
+  ) {
+    return { ...lambda, arguments: [lambda.argument] }
+  }
+
+  const nested = getProgram(lambda)
+
+  return {
+    ...nested,
+    arguments: [lambda.argument, ...nested.arguments]
+  }
 }
 
-const occurs = (name: string, program: Program) => {
-  return (
-    program.output === name ||
-    program.expressions.some(
-      (value) => value.argument === name || value.func === name
-    )
-  )
+const occurs = (name: string, expression: Ast): boolean => {
+  if (expression._type === 'call') {
+    return expression.argument === name || expression.func === name
+  }
+
+  if (expression.argument === name) return false
+
+  return expression.output === name || occursIn(name, expression.expressions)
+}
+
+function occursIn(name: string, expressions: Ast[]): boolean {
+  return expressions.some((expression) => occurs(name, expression))
+}
+
+const occursInProgram = (name: string, program: Program): boolean => {
+  if (program.arguments.includes(name)) {
+    return false
+  }
+
+  return program.output === name || occursIn(name, program.expressions)
 }
 
 const mergeLayouts = (first: Layout, second: Layout): Layout => {
@@ -105,7 +135,8 @@ const unconsProgram = (program: Program): [Ast, Program] => {
   return [
     program.expressions[0],
     {
-      output: program.output,
+      ...program,
+      arguments: [],
       expressions: program.expressions.slice(1)
     }
   ]
@@ -155,7 +186,7 @@ type ResultSpot = ADT<{
  * @param expression The expression to find the place for the result of.
  * @param layer The current layout layer.
  */
-const findResultSpot = (expression: Ast, layer: LayoutCell[]): ResultSpot => {
+const findResultSpot = (expression: Call, layer: LayoutCell[]): ResultSpot => {
   const before = isBefore(
     expression.func,
     expression.argument,
@@ -212,6 +243,8 @@ const createLayout = (program: Program, previous: Layout): Layout => {
   const [lastLayer] = reversed(previous.lines)
   const [expression, remainingProgram] = unconsProgram(program)
 
+  if (expression._type !== 'call') throw new Error('Cannot handle lambdas yet')
+
   const withContinuations = mapColumn(
     lastLayer,
     match({
@@ -260,7 +293,7 @@ const createLayout = (program: Program, previous: Layout): Layout => {
               ...cell,
               _type: 'fork',
               to: expression.func,
-              continues: occurs(cell.name, remainingProgram)
+              continues: occursInProgram(cell.name, remainingProgram)
             }
           }
 
@@ -270,7 +303,7 @@ const createLayout = (program: Program, previous: Layout): Layout => {
               _type: 'called',
               from: expression.argument,
               to: expression.name,
-              continues: occurs(cell.name, remainingProgram),
+              continues: occursInProgram(cell.name, remainingProgram),
               direction: spot.before ? Direction.Down : Direction.Up
             }
           }
@@ -318,9 +351,11 @@ const createLayout = (program: Program, previous: Layout): Layout => {
   return createLayout(remainingProgram, layout)
 }
 
-export const startLayout = (inputs: string[], program: Program): Layout => {
-  const firstLayer: LayoutCell[] = inputs.map((name) => {
-    const continues = occurs(name, program)
+export const startLayout = (program: Program): Layout => {
+  const programBody: Program = { ...program, arguments: [] }
+
+  const firstLayer: LayoutCell[] = program.arguments.map((name) => {
+    const continues = occursInProgram(name, programBody)
 
     return {
       _type: 'line',
@@ -330,7 +365,7 @@ export const startLayout = (inputs: string[], program: Program): Layout => {
     }
   })
 
-  return createLayout(program, {
+  return createLayout(programBody, {
     lines: [{ cells: firstLayer, data: { _type: 'empty' } }]
   })
 }

@@ -1,8 +1,8 @@
-import type { Ast } from './lc'
+import type { Ast, Program } from './lc'
 import { draw } from '@thi.ng/hiccup-canvas'
 import { group, rect } from '@thi.ng/geom'
 import { renderLambda } from './render'
-import { Program, startLayout } from './layout'
+import { startLayout } from './layout'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -21,7 +21,7 @@ window.onresize = resizeCanvas
 
 resizeCanvas()
 
-const mkNumber = (n: number): Ast[] => {
+const mkNumber = (n: number): Program => {
   const result: Ast[] = []
 
   for (let index = 0; index < n; index++) {
@@ -35,7 +35,12 @@ const mkNumber = (n: number): Ast[] => {
     })
   }
 
-  return result
+  return {
+    expressions: result,
+    output: 'result',
+    name: String(n),
+    arguments: ['succ', 'zero']
+  }
 }
 
 const succ: Program = {
@@ -59,7 +64,9 @@ const succ: Program = {
       name: 'result'
     }
   ],
-  output: 'result'
+  output: 'result',
+  arguments: ['num', 'succ', 'zero'],
+  name: 'succ'
 }
 
 const flipProgram: Program = {
@@ -77,15 +84,14 @@ const flipProgram: Program = {
       name: 'result'
     }
   ],
-  output: 'result'
+  output: 'result',
+  arguments: ['f', 'h', 'g'],
+  name: 'flip'
 }
 
-const program = {
-  expressions: mkNumber(7),
-  output: 'result'
-}
+const program = mkNumber(7)
 
-const layout = startLayout(['succ', 'zero'], program)
+const layout = startLayout(program)
 
 console.log(layout)
 
