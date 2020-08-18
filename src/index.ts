@@ -38,7 +38,7 @@ const mkNumber = (n: number): Ast[] => {
   return result
 }
 
-const program: Program = {
+const succ: Program = {
   expressions: [
     {
       _type: 'call',
@@ -62,13 +62,34 @@ const program: Program = {
   output: 'result'
 }
 
-console.log(startLayout(['num', 'succ', 'zero'], program))
+const flipProgram: Program = {
+  expressions: [
+    {
+      _type: 'call',
+      argument: 'h',
+      func: 'f',
+      name: 'temp'
+    },
+    {
+      _type: 'call',
+      argument: 'g',
+      func: 'temp',
+      name: 'result'
+    }
+  ],
+  output: 'result'
+}
 
-const shapes = renderLambda(
-  ['num', 'succ', 'zero'],
-  program.expressions,
-  program.output
-)
+const program = {
+  expressions: mkNumber(7),
+  output: 'result'
+}
+
+const layout = startLayout(['succ', 'zero'], program)
+
+console.log(layout)
+
+const shapes = renderLambda(layout)
 
 const go = () => {
   draw(context, group({}, shapes))

@@ -10,6 +10,11 @@ import * as tx from '@thi.ng/transducers'
 // TODO: See what I can do so I can just import this directly without breaking snowpack
 const match = TsAdt.match
 
+export const enum Direction {
+  Up,
+  Down
+}
+
 export type ILine = {
   color: string
   name: string
@@ -23,6 +28,7 @@ export type LayoutCell = ADT<{
   }
   called: ILine & {
     continues: boolean
+    direction: Direction
     from: string
     to: string
   }
@@ -40,8 +46,20 @@ const line = (color: string, name: string): LayoutCell => ({
 })
 const nothing: LayoutCell = { _type: 'nothing' }
 
+export type LayoutColumn = {
+  cells: LayoutCell[]
+  data: ADT<{
+    empty: {}
+    call: {
+      called: string
+      argument: string
+      output: string
+    }
+  }>
+}
+
 export type Layout = {
-  lines: LayoutCell[][]
+  lines: LayoutColumn[]
 }
 
 export type Program = {
@@ -64,6 +82,25 @@ const mergeLayouts = (first: Layout, second: Layout): Layout => {
   }
 }
 
+/**
+ * Split a layout into its head and the rest.
+ *
+ * @param layout The layout to split.
+ */
+export const unconsLayout = (layout: Layout): [LayoutColumn, Layout] => {
+  return [
+    layout.lines[0],
+    {
+      lines: layout.lines.slice(1)
+    }
+  ]
+}
+
+/**
+ * Split a program into its head and the rest.
+ *
+ * @param program The program to split.
+ */
 const unconsProgram = (program: Program): [Ast, Program] => {
   return [
     program.expressions[0],
@@ -108,7 +145,7 @@ const searchCell = (
 }
 
 type ResultSpot = ADT<{
-  existing: { cell: LayoutCell }
+  existing: { before: boolean; cell: LayoutCell }
   new: { before: boolean; nextTo: number }
 }>
 
@@ -143,7 +180,8 @@ const findResultSpot = (expression: Ast, layer: LayoutCell[]): ResultSpot => {
   if (spot._type === 'atOffset') {
     return {
       _type: 'existing',
-      cell: spot.raw
+      cell: spot.raw,
+      before
     }
   }
 
@@ -156,6 +194,16 @@ const findResultSpot = (expression: Ast, layer: LayoutCell[]): ResultSpot => {
   }
 }
 
+const mapColumn = (
+  column: LayoutColumn,
+  f: Fn<LayoutCell, LayoutCell>
+): LayoutColumn => {
+  return {
+    data: column.data,
+    cells: column.cells.map(f)
+  }
+}
+
 const createLayout = (program: Program, previous: Layout): Layout => {
   if (program.expressions.length === 0) {
     return previous
@@ -164,7 +212,8 @@ const createLayout = (program: Program, previous: Layout): Layout => {
   const [lastLayer] = reversed(previous.lines)
   const [expression, remainingProgram] = unconsProgram(program)
 
-  const withContinuations: LayoutCell[] = lastLayer.map(
+  const withContinuations = mapColumn(
+    lastLayer,
     match({
       line: ({ color, name }) => line(color, name),
       created: ({ color, name }) => line(color, name),
@@ -176,80 +225,90 @@ const createLayout = (program: Program, previous: Layout): Layout => {
     })
   )
 
-  const spot = findResultSpot(expression, withContinuations)
+  const spot = findResultSpot(expression, withContinuations.cells)
 
   const getFunctionColor = () =>
-    withContinuations
+    withContinuations.cells
       .flatMap((cell) => (cell._type === 'nothing' ? [] : [cell]))
       .find((cell) => cell.name === expression.func)?.color ?? 'white'
 
-  const layer: LayoutCell[] = withContinuations
-    .map(
-      (cell): LayoutCell => {
-        if (spot._type === 'existing' && spot.cell === cell) {
-          return {
-            _type: 'created',
-            color: getFunctionColor(),
-            name: expression.name,
-            from: expression.func
+  const layer: LayoutColumn = {
+    data: {
+      _type: 'call',
+      argument: expression.argument,
+      called: expression.func,
+      output: expression.name
+    },
+    cells: withContinuations.cells
+      .map(
+        (cell): LayoutCell => {
+          if (spot._type === 'existing' && spot.cell === cell) {
+            return {
+              _type: 'created',
+              color: getFunctionColor(),
+              name: expression.name,
+              from: expression.func
+            }
           }
-        }
 
-        if (cell._type !== 'line') {
+          if (cell._type !== 'line') {
+            return cell
+          }
+
+          if (cell.name === expression.argument) {
+            return {
+              ...cell,
+              _type: 'fork',
+              to: expression.func,
+              continues: occurs(cell.name, remainingProgram)
+            }
+          }
+
+          if (cell.name === expression.func) {
+            return {
+              ...cell,
+              _type: 'called',
+              from: expression.argument,
+              to: expression.name,
+              continues: occurs(cell.name, remainingProgram),
+              direction: spot.before ? Direction.Down : Direction.Up
+            }
+          }
+
           return cell
         }
-
-        if (cell.name === expression.argument) {
-          return {
-            ...cell,
-            _type: 'fork',
-            to: expression.func,
-            continues: occurs(cell.name, remainingProgram)
-          }
+      )
+      .flatMap((cell) => {
+        if (
+          cell._type === 'nothing' ||
+          spot._type === 'existing' ||
+          cell.name !== expression.func
+        ) {
+          return [cell]
         }
 
-        if (cell.name === expression.func) {
-          return {
-            ...cell,
-            _type: 'called',
-            from: expression.argument,
-            to: expression.name,
-            continues: occurs(cell.name, remainingProgram)
-          }
+        const resulting: LayoutCell = {
+          _type: 'created',
+          from: expression.func,
+          color: getFunctionColor(),
+          name: expression.name
         }
 
-        return cell
-      }
-    )
-    .flatMap((cell) => {
-      if (
-        cell._type === 'nothing' ||
-        spot._type === 'existing' ||
-        cell.name !== expression.func
-      ) {
-        return [cell]
-      }
-
-      const resulting: LayoutCell = {
-        _type: 'created',
-        from: expression.func,
-        color: getFunctionColor(),
-        name: expression.name
-      }
-
-      return spot.before ? [resulting, cell] : [cell, resulting]
-    })
+        return spot.before ? [resulting, cell] : [cell, resulting]
+      })
+  }
 
   const updatedPrevious = {
-    lines: previous.lines.map((line) =>
-      line.flatMap((cell, index) => {
+    lines: previous.lines.map((line) => ({
+      data: line.data,
+      cells: line.cells.flatMap((cell, index) => {
         if (spot._type === 'existing' || index !== spot.nextTo) {
           return [cell]
         }
 
         return spot.before ? [nothing, cell] : [cell, nothing]
       })
-    )
+    }))
   }
 
   const layout = mergeLayouts(updatedPrevious, {
@@ -271,5 +330,7 @@ export const startLayout = (inputs: string[], program: Program): Layout => {
     }
   })
 
-  return createLayout(program, { lines: [firstLayer] })
+  return createLayout(program, {
+    lines: [{ cells: firstLayer, data: { _type: 'empty' } }]
+  })
 }

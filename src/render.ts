@@ -1,5 +1,4 @@
-import type { Ast } from './lc'
-import { rect, polygon, circle, line } from '@thi.ng/geom'
+import { rect, polygon, circle } from '@thi.ng/geom'
 import type { IHiccupShape } from '@thi.ng/geom-api'
 import {
   lineSpace,
@@ -8,130 +7,11 @@ import {
   sinCallAngle,
   tgCallAngle,
   callOffset,
-  lineColors,
   cosCallAngle,
   intersectionColor
 } from './constants'
 import { add2, sub2 } from '@thi.ng/vectors'
-import { reversed } from './utils'
-
-type LineDescriptor = {
-  nextTo: string
-  name: string
-  argName: string
-  argContinues: boolean
-  funcContinues: boolean
-}
-
-const occurs = (name: string, ast: Ast[], past: number, output: string) => {
-  return (
-    output === name ||
-    ast.some(
-      (value, index) =>
-        (value.argument === name || value.func === name) && index > past
-    )
-  )
-}
-const generateAstLine = (
-  ast: Ast,
-  continues: (name: string) => boolean
-): LineDescriptor => {
-  return {
-    nextTo: ast.func,
-    argName: ast.argument,
-    name: ast.name,
-    argContinues: continues(ast.argument),
-    funcContinues: continues(ast.func)
-  }
-}
-
-const enum SpawnDirection {
-  Up,
-  Down
-}
-
-type DataLine = {
-  name: string
-  continuity?: {
-    argument: boolean
-    function: boolean
-  }
-  spawnDirection?: SpawnDirection
-  color: string
-}
-
-const isBefore = <T>(
-  a: T,
-  b: T,
-  arr: T[],
-  compare: (a: T, b: T) => boolean = (a, b) => a === b
-): boolean => {
-  for (const el of arr) {
-    if (compare(el, a)) return true
-    if (compare(el, b)) return false
-  }
-
-  return false
-}
-
-const formatLines = (
-  func: DataLine,
-  arg: string,
-  result: Omit<DataLine, 'spawnDirection'>,
-  arr: DataLine[]
-) => {
-  if (
-    isBefore(
-      func.name,
-      arg,
-      arr.map(({ name }) => name)
-    )
-  ) {
-    return [{ ...result, spawnDirection: SpawnDirection.Down }, func]
-  }
-
-  return [func, { ...result, spawnDirection: SpawnDirection.Up }]
-}
-
-const generateAstLines = (
-  oldInputs: string[],
-  ast: Ast[],
-  output: string
-): DataLine[] => {
-  const lines = ast.map((expression, index) =>
-    generateAstLine(expression, (name) => occurs(name, ast, index, output))
-  )
-
-  const names = reversed(
-    lines.reduce(
-      (acc, current) => {
-        return acc.flatMap((element) =>
-          element.name === current.nextTo
-            ? formatLines(
-                element,
-                current.argName,
-                {
-                  name: current.name,
-                  continuity: {
-                    argument: current.argContinues,
-                    function: current.funcContinues
-                  },
-                  color: element.color
-                },
-                acc
-              )
-            : [element]
-        )
-      },
-      oldInputs.map((name) => ({
-        name,
-        color: lineColors.next().value as string
-      }))
-    )
-  )
-
-  return names
-}
+import { Layout, unconsLayout, Direction, LayoutCell } from './layout'
 
 const toIndexMap = <T>(array: T[]): Map<T, number> => {
   const result = new Map<T, number>()
@@ -160,39 +40,64 @@ const createSegment = (
   })
 }
 
-export const removeElement = <T>(el: T, arr: T[]) => arr.filter((a) => a !== el)
+const renderSegment = (
+  cell: LayoutCell,
+  getIndex: (name: string) => number,
+  length: number,
+  offset: number
+): IHiccupShape[] => {
+  if (
+    cell._type === 'line' ||
+    (cell._type === 'called' && cell.continues) ||
+    (cell._type === 'fork' && cell.continues)
+  ) {
+    const shape = createSegment(getIndex(cell.name), offset, cell.color, length)
 
-export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
-  const lines = generateAstLines(inputs, ast, output)
-  const lineIndices = toIndexMap(lines.map(({ name }) => name))
-  const lineMap = new Map(lines.map((line) => [line.name, line]))
-
-  const shapes: Array<IHiccupShape> = []
-  let activeLines: string[] = []
-
-  for (const input of inputs) {
-    const index = lineIndices.get(input)!
-
-    const shape = createSegment(index, 0, lineMap.get(input)?.color)
-
-    shapes.push(shape)
-    activeLines.push(input)
+    return [shape]
   }
 
-  let offset = segmentLength
+  return []
+}
 
-  for (const expression of ast) {
-    const name = expression.name
+export const renderLambda = (layout: Layout, offset = 0): IHiccupShape[] => {
+  if (layout.lines.length === 0) return []
 
-    const startIndex = lineIndices.get(expression.argument)!
-    const endIndex = lineIndices.get(name)!
-    const functionIndex = lineIndices.get(expression.func)!
-    const argColor = lineMap.get(expression.argument)?.color
-    const functionColor = lineMap.get(expression.func)?.color
-    const direction =
-      lineMap.get(name)?.spawnDirection === SpawnDirection.Down ? -1 : 1
+  const [{ cells, data }, remainingLayout] = unconsLayout(layout)
 
-    const whenUp = (a: number, b = 0) => (direction === 1 ? a : b)
+  const lineIndices = toIndexMap(
+    cells.map((cell) => (cell._type === 'nothing' ? '__unknown' : cell.name))
+  )
+
+  const getIndex = (name: string) => lineIndices.get(name)!
+
+  const lineMap = new Map(
+    cells.flatMap((cell) =>
+      cell._type === 'nothing' ? [] : [[cell.name, cell]]
+    )
+  )
+
+  const debug: IHiccupShape[] = []
+  const segments: IHiccupShape[] = []
+
+  if (data._type === 'call') {
+    const startIndex = lineIndices.get(data.argument)!
+
+    const endIndex = lineIndices.get(data.output)!
+    const functionIndex = lineIndices.get(data.called)!
+
+    const functionCell = lineMap.get(data.called)!
+    const argument = lineMap.get(data.argument)
+
+    if (functionCell._type !== 'called')
+      throw new Error(`Cannot call line of type ${functionCell._type}`)
+
+    if (argument?._type !== 'fork')
+      throw new Error(`Cannot use line of type ${argument?._type} as argument`)
+
+    const direction = functionCell.direction === Direction.Up ? -1 : 1
+
+    const whenUp = (a: number, b = 0) =>
+      functionCell.direction === Direction.Down ? a : b
 
     const start = [
       offset + callOffset,
@@ -239,7 +144,7 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
             start,
             [offset, getLineYPosition(startIndex)]
           ],
-      { fill: argColor }
+      { fill: argument.color }
     )
 
     const functionToResult = polygon(
@@ -261,58 +166,45 @@ export const renderLambda = (inputs: string[], ast: Ast[], output: string) => {
             add2([], anglePoint, diff)
           ],
       {
-        fill: functionColor
+        fill: functionCell.color
       }
     )
 
     const visibleXDiff = diff[0] + callOffset * 2
-    const continuity = lineMap.get(name)?.continuity
 
-    for (const line of activeLines) {
-      if (
-        line === name ||
-        (line === expression.func && continuity?.function !== true) ||
-        (line === expression.argument && continuity?.argument !== true)
-      )
-        continue
-
-      const index = lineIndices.get(line)!
-
-      shapes.push(
-        createSegment(index, offset, lineMap.get(line)?.color, visibleXDiff)
-      )
-    }
-
-    shapes.push(
-      rect(
-        [offset, getLineYPosition(functionIndex)],
-        [intersection[0] - offset, lineWidth],
-        { fill: functionColor }
-      )
+    const func = rect(
+      [offset, getLineYPosition(functionIndex)],
+      [intersection[0] - offset, lineWidth],
+      { fill: functionCell.color }
     )
 
-    shapes.push(argToFunction, functionToResult)
-
-    shapes.push(
-      circle(sub2([], intersection, [lineWidth / 2, 0]), lineWidth / 1.1, {
+    const intersectionMark = circle(
+      sub2([], intersection, [lineWidth / 2, 0]),
+      lineWidth / 1.1,
+      {
         fill: intersectionColor
-      })
+      }
     )
 
-    activeLines.push(name)
-
-    if (continuity) {
-      if (!continuity.argument) {
-        activeLines = removeElement(expression.argument, activeLines)
-      }
-
-      if (!continuity.function) {
-        activeLines = removeElement(expression.func, activeLines)
-      }
-    }
-
-    offset += visibleXDiff
+    return [
+      ...cells.flatMap((cell) =>
+        renderSegment(cell, getIndex, visibleXDiff, offset)
+      ),
+      func,
+      argToFunction,
+      functionToResult,
+      func,
+      intersectionMark,
+      ...debug,
+      ...renderLambda(remainingLayout, offset + visibleXDiff)
+    ]
   }
 
-  return shapes
+  return [
+    ...cells.flatMap((cell) =>
+      renderSegment(cell, getIndex, segmentLength, offset)
+    ),
+    ...debug,
+    ...renderLambda(remainingLayout, offset + segmentLength)
+  ]
 }
