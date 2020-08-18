@@ -235,6 +235,28 @@ const mapColumn = (
   }
 }
 
+/**
+ * Add an empty row to a layout.
+ *
+ * @param layout The layout to add the line to.
+ * @param nextTo The index to add the line after.
+ * @param before If this is true the line will be inserted before the target index, not after it,
+ */
+const createLine = (layout: Layout, nextTo: number, before = false) => {
+  return {
+    lines: layout.lines.map((line) => ({
+      data: line.data,
+      cells: line.cells.flatMap((cell, index) => {
+        if (index !== nextTo) {
+          return [cell]
+        }
+
+        return before ? [nothing, cell] : [cell, nothing]
+      })
+    }))
+  }
+}
+
 const createLayout = (program: Program, previous: Layout): Layout => {
   if (program.expressions.length === 0) {
     return previous
@@ -331,18 +353,10 @@ const createLayout = (program: Program, previous: Layout): Layout => {
       })
   }
 
-  const updatedPrevious = {
-    lines: previous.lines.map((line) => ({
-      data: line.data,
-      cells: line.cells.flatMap((cell, index) => {
-        if (spot._type === 'existing' || index !== spot.nextTo) {
-          return [cell]
-        }
-
-        return spot.before ? [nothing, cell] : [cell, nothing]
-      })
-    }))
-  }
+  const updatedPrevious =
+    spot._type === 'existing'
+      ? previous
+      : createLine(previous, spot.nextTo, spot.before)
 
   const layout = mergeLayouts(updatedPrevious, {
     lines: [layer]
