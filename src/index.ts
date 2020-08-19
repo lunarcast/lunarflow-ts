@@ -1,5 +1,6 @@
-import { withIds } from './lc'
+import { indexAst } from './lc'
 import * as tx from '@thi.ng/transducers'
+import { buildTimeline } from './timeline'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -40,23 +41,25 @@ resizeCanvas()
 //   }
 // }
 
-console.log(
-  withIds<{}, number>(
-    {
+const ast = indexAst(
+  {
+    _type: 'lambda',
+    argument: 'x',
+    body: {
       _type: 'lambda',
-      argument: 'x',
+      argument: 'y',
       body: {
-        _type: 'lambda',
-        argument: 'y',
-        body: {
-          _type: 'var',
-          name: 'x'
-        }
+        _type: 'var',
+        name: 'x'
       }
-    },
-    tx.range(0, Infinity)[Symbol.iterator]()
-  )
+    }
+  },
+  tx.range(0, Infinity)[Symbol.iterator]()
 )
+
+const timeline = buildTimeline(ast)
+
+console.log(timeline)
 
 // const shapes = renderLambda(layout)
 
