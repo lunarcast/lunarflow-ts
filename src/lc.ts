@@ -1,190 +1,86 @@
 import type { ADT } from 'ts-adt'
-import { Fn } from '@thi.ng/api'
+import type { Fn } from '@thi.ng/api'
 
-export type Lambda = {
+export type Lambda<T> = {
   argument: string
-  expressions: Ast[]
-  output: string
-  name: string
+  body: Ast<T>
 }
 
-export type Program = {
+export type Program<T = {}> = {
   arguments: string[]
-  expressions: Ast[]
-  output: string
-  name: string
+  body: Ast<T>
 }
 
-export type Call = { func: string; argument: string; name: string }
+export type Var = { name: string }
+export type Call<T> = { func: Ast<T>; argument: Ast<T> }
 
 /**
  * Our own weird representation for the lambda calculus. Designed for ease of rendering.
  */
-export type Ast = ADT<{
-  // let: { name: string; value: Ast; in: Ast }
-  call: Call
-  lambda: Lambda
-}>
+export type Ast<T> = T &
+  ADT<{
+    // let: { name: string; value: Ast; in: Ast }
+    call: Call<T>
+    lambda: Lambda<T>
+    var: Var
+  }>
 
 /**
- * Find all free terms inside an expression.
- *
- * @param ast The expression to look inside.
- * @param except The current scope.
+ * type which has an unique id.
  */
-export function* free(ast: Ast, except: Set<string>): Generator<string> {
-  const check = function* (name: string) {
-    if (!except.has(name)) {
-      yield name
-    }
-  }
-
-  if (ast._type === 'call') {
-    yield* check(ast.func)
-    yield* check(ast.argument)
-  }
-
-  if (ast._type === 'lambda') {
-    const names = ast.expressions.map((e) => e.name).concat([...except])
-    if (!names.includes(ast.output)) yield ast.output
-
-    yield* freeMany(ast.expressions, new Set([...except, ast.argument]))
-  }
-}
+type IId<T> = { id: T }
 
 /**
- * Find all free terms in a series of expressions
+ * Run a function on each node of an ast.
  *
- * @param expressions The list of expressions to collect from.
- * @param set The current scope.
+ * @param f The function to run on each layer.
  */
-function* freeMany(expressions: Ast[], set: Set<string>): Generator<string> {
-  for (const ast of expressions) {
-    yield* free(ast, set)
+const everywhereOnAst = <T, U = {}>(f: Fn<Ast<T>, Ast<T> & U>) => (
+  ast: Ast<T>
+): Ast<U> => {
+  const updated = f(ast)
+  const go = everywhereOnAst(f)
 
-    set.add(ast.name)
-  }
-}
-
-/**
- * Group multiple lambdas together in a single program.
- *
- * @param lambda The lambda to start from.
- */
-export const lambdaToProgram = (lambda: Lambda): Program => {
-  if (
-    lambda.expressions.length !== 1 ||
-    lambda.expressions[0]?._type !== 'lambda'
-  ) {
+  if (updated._type === 'call') {
     return {
-      name: lambda.name,
-      output: lambda.output,
-      expressions: lambda.expressions,
-      arguments: [lambda.argument]
+      ...updated,
+      argument: go(updated.argument),
+      func: go(updated.func)
     }
   }
 
-  const nested = lambdaToProgram(lambda.expressions[0])
-
-  return {
-    arguments: [lambda.argument, ...nested.arguments],
-    output: lambda.output,
-    name: lambda.name,
-    expressions: nested.expressions
-  }
-}
-
-/**
- * Check if a name appears inside an expression.
- *
- * @param name The name to search for.
- * @param expression The expression to search in.
- */
-export const occurs = (name: string, expression: Ast): boolean => {
-  if (expression._type === 'call') {
-    return expression.argument === name || expression.func === name
-  }
-
-  if (expression.argument === name) return false
-
-  return expression.output === name || occursIn(name, expression.expressions)
-}
-
-/**
- * Check if a name appears inside a sequence of expressions.
- *
- * @param name The name to search for.
- * @param expressions The expressions to search in.
- */
-function occursIn(name: string, expressions: Ast[]): boolean {
-  return expressions.some((expression) => occurs(name, expression))
-}
-
-/**
- * Split a program into its head and the rest.
- *
- * @param program The program to split.
- */
-export const unconsProgram = (program: Program): [Ast, Program] => {
-  return [
-    program.expressions[0],
-    {
-      ...program,
-      arguments: [],
-      expressions: program.expressions.slice(1)
+  if (updated._type === 'lambda') {
+    return {
+      ...updated,
+      body: go(updated.body)
     }
-  ]
+  }
+
+  return updated
 }
 
 /**
- * Check if a name appears inside a program.
+ * Add an id to every node in the ast.
  *
- * @param name The name to search for.
- * @param program The program to search in.
+ * @param ast The ast to add ids to.
+ * @param ids Generator for the actual ids.
  */
-export const occursInProgram = (name: string, program: Program): boolean => {
-  if (program.arguments.includes(name)) {
-    return false
-  }
+export const withIds = <T = {}, I = number>(
+  ast: Ast<T>,
+  ids: Generator<I, void>
+): Ast<T & IId<I>> => {
+  const go = everywhereOnAst<T, T & IId<I>>((expression) => {
+    const id = ids.next()
 
-  return program.output === name || occursIn(name, program.expressions)
-}
-
-/**
- * Get a series of nested lambdas from a program
- *
- * @param program The program to transform.
- */
-export const programToLambda = (program: Program): ADT<{ lambda: Lambda }> => {
-  if (program.arguments.length === 0) {
-    throw new Error(`Cannot convert empty program to a lambda.`)
-  }
-
-  const [first, ...rest] = program.arguments
-
-  return rest.reduce(
-    (acc, curr) => {
-      const outerName = `__outer-${acc.output}`
-
-      return {
-        _type: 'lambda',
-        argument: curr,
-        output: outerName,
-        name: acc.name,
-        expressions: [
-          {
-            ...acc,
-            name: outerName
-          }
-        ]
-      }
-    },
-    {
-      _type: 'lambda',
-      argument: first,
-      name: program.name,
-      expressions: program.expressions,
-      output: program.output
+    if (id.done) {
+      throw new Error(`Cannot generate enough ids for the entire ast`)
     }
-  )
+
+    return {
+      ...expression,
+      id: id.value
+    }
+  })
+
+  return go(ast)
 }
