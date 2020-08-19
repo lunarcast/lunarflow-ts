@@ -1,10 +1,9 @@
 import type { ADT } from 'ts-adt'
-import type { IndexedAst } from './lc'
+import { IndexedAst, collectArguments } from './lc'
 
-export type TimelineStep = ADT<{
-  startLine: { name: number }
+type TimelineStep = ADT<{
   call: { func: number; argument: number }
-  nested: { name: number }
+  nested: { name: number; arguments: number[] }
   flatten: { output: number; name: number }
 }>
 
@@ -17,18 +16,15 @@ export type Timeline = TimelineStep[]
  */
 function buildTimelineAndId(ast: IndexedAst): [Timeline, number] {
   if (ast._type === 'lambda') {
-    const [nestedTimeline, output] = buildTimelineAndId(ast.body)
+    const grouped = collectArguments(ast)
+    const [nestedTimeline, output] = buildTimelineAndId(grouped.body)
 
     const timeline: Timeline = [
-      { _type: 'nested', name: ast.id },
-      {
-        _type: 'startLine',
-        name: ast.argumentId
-      },
+      { _type: 'nested', name: grouped.id, arguments: grouped.argumentIds },
       ...nestedTimeline,
       {
         _type: 'flatten',
-        name: ast.id,
+        name: grouped.id,
         output
       }
     ]

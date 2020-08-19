@@ -72,3 +72,51 @@ export const indexAst = (
 
   throw new Error(`Ast ${ast} has an unknown type.`)
 }
+
+/**
+ * When we render lambdas we group them together as "visual sugar"
+ */
+export type LambdaGroup = {
+  argumentIds: number[]
+  argumentNames: string[]
+  body: IndexedAst
+  id: number
+  ids: number[]
+  raw: IndexedAst[]
+}
+
+/**
+ * Collect the arguments of multiple lambdas into a lambda group.
+ *
+ * @param lambda The lambda to start with.
+ */
+export const collectArguments = (lambda: IndexedAst): LambdaGroup => {
+  // TODO: Maybe find a way to enforce this at compile time?
+  if (lambda._type !== 'lambda') {
+    throw new Error(
+      `Cannot collect arguments of non-lambda ast ${JSON.stringify(lambda)}`
+    )
+  }
+
+  if (lambda.body._type !== 'lambda') {
+    return {
+      argumentNames: [lambda.argument],
+      argumentIds: [lambda.argumentId],
+      id: lambda.id,
+      ids: [lambda.id],
+      body: lambda.body,
+      raw: [lambda]
+    }
+  }
+
+  const nested = collectArguments(lambda.body)
+
+  return {
+    argumentNames: [lambda.argument, ...nested.argumentNames],
+    argumentIds: [lambda.argumentId, ...nested.argumentIds],
+    id: lambda.id,
+    ids: [lambda.id, ...nested.ids],
+    body: nested.body,
+    raw: [lambda, ...nested.raw]
+  }
+}
