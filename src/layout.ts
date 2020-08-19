@@ -47,6 +47,9 @@ export type LayoutCell = ADT<{
   created: ILine & {
     from: string
   }
+  forked: ILine & {
+    from: string
+  }
   nothing: {}
 }>
 
@@ -278,6 +281,7 @@ const advanceCell: Fn<LayoutCell, LayoutCell> = match({
     continues ? line(color, name) : nothing,
   fork: ({ continues, color, name }) =>
     continues ? line(color, name) : nothing,
+  forked: ({ name, color }) => line(color, name),
   nothing: constantly(nothing)
 })
 
