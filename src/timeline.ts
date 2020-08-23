@@ -1,10 +1,10 @@
 import type { ADT } from 'ts-adt'
 import { IndexedAst, collectArguments } from './lc'
 
-type TimelineStep = ADT<{
-  call: { func: number; argument: number }
+export type TimelineStep = ADT<{
+  call: { func: number; argument: number; name: number }
   nested: { name: number; arguments: number[] }
-  flatten: { output: number; name: number }
+  flatten: { output: number; name: number; arguments: number[] }
 }>
 
 export type Timeline = TimelineStep[]
@@ -25,7 +25,8 @@ function buildTimelineAndId(ast: IndexedAst): [Timeline, number] {
       {
         _type: 'flatten',
         name: grouped.id,
-        output
+        output,
+        arguments: grouped.argumentIds
       }
     ]
 
@@ -46,7 +47,8 @@ function buildTimelineAndId(ast: IndexedAst): [Timeline, number] {
       {
         _type: 'call',
         func: funcId,
-        argument: argId
+        argument: argId,
+        name: ast.id
       }
     ]
 

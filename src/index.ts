@@ -1,6 +1,7 @@
 import { indexAst } from './lc'
 import * as tx from '@thi.ng/transducers'
 import { buildTimeline } from './timeline'
+import { Layout, getLayoutMatrix } from './layout'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -59,7 +60,56 @@ const ast = indexAst(
 
 const timeline = buildTimeline(ast)
 
+const layout: Layout = [
+  {
+    color: 'red',
+    index: {
+      _type: 'standalone',
+      index: 2
+    },
+    interval: { from: 0, to: 2 }
+  },
+  {
+    color: 'blue',
+    index: {
+      _type: 'standalone',
+      index: 3
+    },
+    interval: { from: 0, to: 2 }
+  },
+  {
+    color: 'green',
+    index: { _type: 'standalone', index: 4 },
+    interval: { from: 0, to: 3 }
+  },
+  {
+    color: 'red',
+    index: {
+      _type: 'standalone',
+      index: 1
+    },
+    interval: {
+      from: 1,
+      to: 3
+    }
+  },
+  {
+    color: 'red',
+    index: {
+      _type: 'standalone',
+      index: 0
+    },
+    interval: {
+      from: 2,
+      to: 4
+    }
+  }
+]
+
 console.log(timeline)
+
+console.log(layout)
+console.log(getLayoutMatrix(layout))
 
 // const shapes = renderLambda(layout)
 

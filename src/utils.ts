@@ -26,3 +26,47 @@ export const isBefore = <T>(
 
   return false
 }
+
+/**
+ * Create a new array with a given element at a given index.
+ *
+ * @param arr The array to alter.
+ * @param index The index set the new value at.
+ * @param element The element to set the given index at.
+ * @param defaultElement The element to fill newly created indices with.
+ */
+export const alterArray = <T>(
+  arr: T[],
+  index: number,
+  element: T,
+  defaultElement: T = element
+) =>
+  index < 0
+    ? arr
+    : index < arr.length
+    ? arr.map((current, currentIndex) =>
+        currentIndex === index ? element : current
+      )
+    : Array(index + 1)
+        .fill(1)
+        .map((_, currentIndex) =>
+          currentIndex === index
+            ? element
+            : currentIndex < arr.length
+            ? arr[currentIndex]
+            : defaultElement
+        )
+
+export interface Interval {
+  from: number
+  to: number
+}
+
+/**
+ * Check if a number is inside an interval of form [a, b)
+ *
+ * @param interval The interval to check for a value inside.
+ * @param value The value to check for.
+ */
+export const inInterval = ({ from, to }: Interval, value: number) =>
+  value >= from && value < to
