@@ -1,7 +1,7 @@
 import { indexAst } from './lc'
 import * as tx from '@thi.ng/transducers'
 import { buildTimeline } from './timeline'
-import { Layout, getLayoutMatrix } from './layout'
+import { Layout, getLayoutMatrix, LayoutStep } from './layout'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -60,49 +60,65 @@ const ast = indexAst(
 
 const timeline = buildTimeline(ast)
 
+const step = null as any
+
 const layout: Layout = [
   {
-    color: 'red',
-    index: {
-      _type: 'standalone',
-      index: 2
-    },
-    interval: { from: 0, to: 2 }
-  },
-  {
-    color: 'blue',
-    index: {
-      _type: 'standalone',
-      index: 3
-    },
-    interval: { from: 0, to: 2 }
-  },
-  {
-    color: 'green',
-    index: { _type: 'standalone', index: 4 },
-    interval: { from: 0, to: 3 }
-  },
-  {
-    color: 'red',
-    index: {
-      _type: 'standalone',
-      index: 1
-    },
-    interval: {
-      from: 1,
-      to: 3
-    }
-  },
-  {
-    color: 'red',
-    index: {
-      _type: 'standalone',
-      index: 0
-    },
-    interval: {
-      from: 2,
-      to: 4
-    }
+    _type: 'nested',
+    arguments: [0, 1, 2],
+    color: 'pink',
+    id: 10,
+    index: 0,
+    output: 4,
+    step,
+    steps: [
+      {
+        _type: 'call',
+        color: 'red',
+        index: 2,
+        interval: { from: 0, to: 2 },
+        step,
+        id: 0
+      },
+      {
+        _type: 'call',
+        color: 'blue',
+        index: 3,
+        interval: { from: 0, to: 2 },
+        step,
+        id: 1
+      },
+      {
+        _type: 'call',
+        color: 'green',
+        index: 4,
+        interval: { from: 0, to: 3 },
+        step,
+        id: 2
+      },
+      {
+        _type: 'call',
+        color: 'red',
+        index: 1,
+        interval: {
+          from: 1,
+          to: 3
+        },
+        step,
+        id: 3
+      },
+      {
+        _type: 'call',
+        color: 'red',
+        index: 0,
+        interval: {
+          from: 2,
+          to: 4
+        },
+        step,
+        id: 4
+      }
+    ]
   }
 ]
 

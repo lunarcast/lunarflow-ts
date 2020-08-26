@@ -3,8 +3,7 @@ import { IndexedAst, collectArguments } from './lc'
 
 export type TimelineStep = ADT<{
   call: { func: number; argument: number; name: number }
-  nested: { name: number; arguments: number[] }
-  flatten: { output: number; name: number; arguments: number[] }
+  nested: { name: number; arguments: number[]; output: number; steps: Timeline }
 }>
 
 export type Timeline = TimelineStep[]
@@ -20,13 +19,12 @@ function buildTimelineAndId(ast: IndexedAst): [Timeline, number] {
     const [nestedTimeline, output] = buildTimelineAndId(grouped.body)
 
     const timeline: Timeline = [
-      { _type: 'nested', name: grouped.id, arguments: grouped.argumentIds },
-      ...nestedTimeline,
       {
-        _type: 'flatten',
+        _type: 'nested',
         name: grouped.id,
+        arguments: grouped.argumentIds,
         output,
-        arguments: grouped.argumentIds
+        steps: nestedTimeline
       }
     ]
 
