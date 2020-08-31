@@ -1,30 +1,30 @@
-import type { TimelineStep, Timeline } from './timeline'
+import type { TimelineStep, Timeline, TimelineCallStep } from './timeline'
 import type { ADT } from 'ts-adt'
 import { isBefore, alterArray, inInterval, Interval } from './utils'
-import { range, last } from '@thi.ng/transducers'
+import { range, last, matchLast } from '@thi.ng/transducers'
 import type { Fn, Fn3, Fn2 } from '@thi.ng/api'
 
 export type ILayoutStep = {
   color: string
-  index: number
   id: number
 }
 
 export type LayoutStep = ADT<{
   call: {
-    interval: { from: number; to: number }
-    step: TimelineStep & { _type: 'call' }
+    startsAt: number
+    step: TimelineCallStep
   }
   nested: {
     arguments: number[]
     step: TimelineStep & { _type: 'nested' }
     output: number
-    steps: LayoutStep[]
+    steps: Layout
   }
+  argument: { startsAt: number }
 }> &
   ILayoutStep
 
-export type Layout = LayoutStep[]
+export type Layout = LayoutStep[][]
 
 type LayoutMatrixItem = {
   raw: LayoutStep
@@ -41,14 +41,6 @@ type LayoutMatrix = LayoutMatrixCell[][]
 
 const emptyCell: LayoutMatrixCell = {
   _type: 'nothing'
-}
-
-const addCell = (
-  column: LayoutMatrixCell[],
-  cell: Exclude<LayoutMatrixCell, { _type: 'nothing' }>,
-  index: number
-): LayoutMatrixCell[] => {
-  return alterArray<LayoutMatrixCell>(column, index, cell, emptyCell)
 }
 
 /**
@@ -93,21 +85,156 @@ const cellIsBefore = (
 }
 
 /**
- * Get the interval a step spans over
+ * Get the starting point of a step.
  *
  * @param step The step to get the interval from.
  */
-const getStepInterval = (step: LayoutStep): Interval => {
-  if (step._type === 'call') {
-    return step.interval
+const startsAt = (step: LayoutStep): number => {
+  if (step._type !== 'nested') {
+    return step.startsAt
   }
 
-  const intervals = step.steps.map(getStepInterval)
+  const intervals = step.steps.flat().map(startsAt)
+
+  return Math.min(...intervals)
+}
+
+/**
+ * Same as startsAt but gets the ending point instead of the starting one.
+ *
+ * @param step The step to get the ending point of.
+ */
+const endsAt = (step: LayoutStep): number => {
+  if (step._type !== 'nested') return step.startsAt + 1
+
+  return layoutEndsAt(step.steps)
+}
+
+/**
+ * Same as startsAt but gets the ending point instead of the starting one.
+ *
+ * @param step The step to get the ending point of.
+ */
+function layoutEndsAt(layout: Layout): number {
+  const steps = layout.flat()
+
+  if (steps.length === 0) return 0
+
+  return Math.max(...steps.map(endsAt))
+}
+/**
+ * Find the start of a particular step.
+ *
+ * @param id The id to search for.
+ * @param layout The layout to search trough.
+ */
+const stepStartsAt = (id: number, layout: Layout): number | null => {
+  for (const step of layout.flat()) {
+    if (step.id === id) return startsAt(step)
+
+    if (step._type === 'nested') {
+      const nested = stepStartsAt(id, step.steps)
+
+      if (nested !== null) return nested
+    }
+  }
+
+  return null
+}
+
+/**
+ * Check if a step is used past a certain bound.
+ *
+ * @param id The id of the step we use as a starting point.
+ * @param layout The layout to look trough.
+ * @param past The minimum bound to consider.
+ */
+const occurs = (id: number, layout: Layout, past: number): boolean => {
+  return layout.flat().some((step) => {
+    if (step.id === id || step._type === 'argument') return false
+
+    if (step._type === 'nested') {
+      // TODO: maybe don't make this assumption?
+      if (id === step.output) return true
+
+      return occurs(id, step.steps, past)
+    }
+
+    if (startsAt(step) < past) return false
+    if (step.step.argument === id || step.step.func === id) return true
+
+    return false
+  })
+}
+
+/**
+ * Select the correct step for a particular position
+ * and check if it continues after the current usage.
+ *
+ * @param layout The layout to look trough.
+ * @param index The index to analyse.
+ * @param at The current position.
+ */
+const getStepInfo = (
+  layout: Layout,
+  index: number,
+  at: number,
+  global: Layout
+): { continues: boolean; current: LayoutStep } | null => {
+  const steps = layout[index]
+  const sorted = steps.sort((s1, s2) => startsAt(s2) - startsAt(s1))
+
+  const step = sorted.find((step) => {
+    const startingPoint = startsAt(step)
+    const endPoint = endsAt(step)
+
+    return startingPoint <= at && at < endPoint
+  })
+
+  if (step === undefined) return null
 
   return {
-    from: Math.min(...intervals.map((i) => i.from)),
-    to: Math.max(...intervals.map((i) => i.to))
+    current: step,
+    continues: occurs(step.id, global, at)
   }
+}
+
+/**
+ * Generate a single column from a layout matrix.
+ *
+ * @param layout The layout to generate the column from.
+ * @param at The index of the column we have to generate.
+ */
+const getLayoutMatrixColumn = (
+  layout: Layout,
+  at: number,
+  global: Layout
+): LayoutMatrixCell[] => {
+  return [...range(layout.length)].map((index) => {
+    const info = getStepInfo(layout, index, at, global)
+
+    if (info === null)
+      return {
+        _type: 'nothing'
+      }
+
+    const step = info.current
+
+    if (step._type === 'nested') {
+      return {
+        _type: 'nested',
+        columns: getLayoutMatrixColumn(step.steps, at, global),
+        raw: step,
+        name: step.id
+      }
+    }
+
+    return {
+      _type: 'standalone',
+      raw: step,
+      continues: info.continues
+    }
+  })
 }
 
 /**
@@ -115,34 +242,13 @@ const getStepInterval = (step: LayoutStep): Interval => {
  *
  * @param layout The layout to get the matrix of.
  */
-export const getLayoutMatrix = (layout: Layout): LayoutMatrix =>
-  [...range(Math.max(...layout.map((step) => getStepInterval(step).to)))].map(
-    (index) =>
-      layout.reduce((current, step) => {
-        const interval = getStepInterval(step)
-        const continues = inInterval(interval, index + 1)
+export const getLayoutMatrix = (layout: Layout): LayoutMatrix => {
+  if (layout.length === 0) return []
 
-        console.log(interval, step.id)
-
-        const cell: Exclude<LayoutMatrixCell, { _type: 'nothing' }> =
-          step._type === 'call'
-            ? {
-                _type: 'standalone',
-                continues,
-                raw: step
-              }
-            : {
-                _type: 'nested',
-                name: step.id,
-                raw: step,
-                columns: getLayoutMatrix(step.steps)[index]
-              }
-
-        return inInterval(interval, index)
-          ? addCell(current, cell, step.index)
-          : current
-      }, [] as LayoutMatrixCell[])
+  return [...range(layoutEndsAt(layout) + 1)].map((index) =>
+    getLayoutMatrixColumn(layout, index, layout)
   )
+}
 
 /**
  * The result of searching something trough a layout.
@@ -163,7 +269,7 @@ const findLayoutStep = (
   name: number,
   stack: number[] = []
 ): LayoutSearchResult | null => {
-  for (const step of layout) {
+  for (const step of layout.flat()) {
     if (step.id === name) {
       return {
         step,
@@ -204,91 +310,141 @@ const getNestedColumn = (
   return getNestedColumn(nested.columns, tail)
 }
 
+const enum EmptySpotKind {
+  NextTo,
+  At
+}
+
+type EmptySpot = {
+  kind: EmptySpotKind
+  index: number
+}
+
+/**
+ * Find all the places we can put something in
+ *
+ * @param column The column to look trough.
+ */
+const getEmptySpots = (column: LayoutMatrixCell[]): EmptySpot[] => {
+  const nextTo = column.map((_, index) => ({
+    index,
+    kind: EmptySpotKind.NextTo
+  }))
+
+  const empty = column.flatMap((cell, index) =>
+    cell._type === 'nothing' ? [{ index, kind: EmptySpotKind.At }] : []
+  )
+
+  return [
+    ...nextTo,
+    ...empty,
+    {
+      index: -1,
+      kind: EmptySpotKind.NextTo
+    }
+  ]
+}
+
+/**
+ * Insert a step into a layout
+ *
+ * @param layout The layout to insert the step in.
+ * @param step The step to insert.
+ * @param spot The spot to insert the step at.
+ */
+const insertStep = (
+  layout: Layout,
+  newSteps: LayoutStep[],
+  spot: EmptySpot
+): Layout => {
+  return spot.kind === EmptySpotKind.At
+    ? layout.map((steps, currentIndex) =>
+        currentIndex === spot.index ? [...steps, ...newSteps] : steps
+      )
+    : [
+        ...layout.slice(0, spot.index + 1),
+        newSteps,
+        ...layout.slice(spot.index + 1)
+      ]
+}
+
 export const buildLayouts = (
   timeline: Timeline,
   previous: Layout = []
-): { old: Layout; newLayout: Layout }[] => {
-  if (timeline.length === 0) return []
+): Layout[] => {
+  if (timeline.length === 0) return [previous]
 
   const matrix = getLayoutMatrix(previous)
 
   const lastColumn: LayoutMatrixCell[] = last(matrix) ?? []
 
   const [head, ...tail] = timeline
+  const currentPoint = layoutEndsAt(previous)
 
   if (head._type === 'call') {
-    const beforeResult = cellIsBefore(head.func, head.argument, lastColumn)
+    const emptySpots = getEmptySpots(lastColumn)
 
-    if (beforeResult === CellBeforeResult.Neither)
-      throw new Error(
-        `Cannot find function ${head.func} and argument ${
-          head.argument
-        } in column ${JSON.stringify(lastColumn)}`
+    return emptySpots.flatMap((spot) => {
+      const inserted = insertStep(
+        previous,
+        [
+          {
+            _type: 'call',
+            color: 'green',
+            id: head.name,
+            startsAt: currentPoint,
+            step: head
+          }
+        ],
+        spot
       )
 
-    const argumentStep = findLayoutStep(previous, head.argument)
-
-    if (argumentStep === null)
-      throw new Error(
-        `Cannot find argument ${head.argument} in previous layout`
-      )
-
-    const functionStep = findLayoutStep(previous, head.func)
-
-    if (functionStep === null)
-      throw new Error(`Cannot find function ${head.func} in previous layout`)
-
-    const deepestStep =
-      functionStep.place.length > argumentStep.place.length
-        ? functionStep
-        : argumentStep
-
-    const nestedColumn = getNestedColumn(lastColumn, deepestStep.place)
-
-    if (nestedColumn === null)
-      throw new Error(
-        `Cannot find nested column for stack ${functionStep.place}`
-      )
-
-    const slice =
-      beforeResult === CellBeforeResult.Argument
-        ? nestedColumn.slice(0, functionStep.step.index)
-        : nestedColumn.slice(functionStep.step.index + 1)
-
-    console.log(slice)
+      return buildLayouts(tail, inserted)
+    })
   }
 
   if (head._type === 'nested') {
-    const nestedLayouts = buildLayouts(head.steps, previous)
+    console.log({ currentPoint })
 
-    const searchResult = findLayoutStep(previous, head.name)
+    const nested: Layout = head.arguments.map((id): [LayoutStep] => [
+      {
+        _type: 'argument',
+        color: 'red',
+        startsAt: currentPoint,
+        id
+      }
+    ])
 
-    if (searchResult === null)
-      throw new Error(`Cannot find nested lambda ${head.name}`)
+    const emptySpots = getEmptySpots(lastColumn)
 
-    const column = getNestedColumn(lastColumn, searchResult.place)
+    return emptySpots.flatMap((spot) => {
+      const nestedLayouts = buildLayouts(head.steps, nested)
 
-    if (column === null)
-      throw new Error(
-        `Cannot find nested column for stack ${searchResult.place}`
-      )
+      return nestedLayouts.flatMap((newLayout) => {
+        const inserted = insertStep(
+          previous,
+          [
+            {
+              _type: 'nested',
+              arguments: head.arguments,
+              output: head.output,
+              color: 'white',
+              id: head.name,
+              step: head,
+              steps: newLayout
+            }
+          ],
+          spot
+        )
 
-    return nestedLayouts.map(({ newLayout, old }) => ({
-      old,
-      newLayout: [
-        {
-          _type: 'nested',
-          arguments: head.arguments,
-          output: head.output,
-          color: 'white',
-          id: head.name,
-          index: 0,
-          step: head,
-          steps: newLayout
-        }
-      ]
-    }))
+        console.log({ inserted })
+
+        return buildLayouts(tail, inserted)
+      })
+    })
   }
 
-  return []
+  throw new Error(
+    `Cannot generate layout step because the timeline step has an unknown type.`
+  )
 }

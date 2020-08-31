@@ -1,8 +1,10 @@
 import type { ADT } from 'ts-adt'
 import { IndexedAst, collectArguments } from './lc'
 
+export type TimelineCallStep = { func: number; argument: number; name: number }
+
 export type TimelineStep = ADT<{
-  call: { func: number; argument: number; name: number }
+  call: TimelineCallStep
   nested: { name: number; arguments: number[]; output: number; steps: Timeline }
 }>
 

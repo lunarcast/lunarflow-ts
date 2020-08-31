@@ -1,7 +1,7 @@
-import { indexAst } from './lc'
+import { indexAst, Ast } from './lc'
 import * as tx from '@thi.ng/transducers'
 import { buildTimeline } from './timeline'
-import { Layout, getLayoutMatrix, LayoutStep } from './layout'
+import { Layout, buildLayouts, getLayoutMatrix } from './layout'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
 
@@ -42,90 +42,69 @@ resizeCanvas()
 //   }
 // }
 
-const ast = indexAst(
-  {
+const rawAst2: Ast = {
+  _type: 'lambda',
+  argument: 'f',
+  body: {
+    _type: 'lambda',
+    argument: 'x',
+    body: {
+      _type: 'call',
+      argument: {
+        _type: 'var',
+        name: 'x'
+      },
+      func: {
+        _type: 'var',
+        name: 'f'
+      }
+    }
+  }
+}
+
+const rawAst: Ast = {
+  _type: 'lambda',
+  argument: 'f',
+  body: {
     _type: 'lambda',
     argument: 'x',
     body: {
       _type: 'lambda',
       argument: 'y',
       body: {
-        _type: 'var',
-        name: 'x'
+        _type: 'call',
+        argument: {
+          _type: 'var',
+          name: 'x'
+        },
+        func: {
+          _type: 'call',
+          argument: {
+            _type: 'var',
+            name: 'y'
+          },
+          func: {
+            _type: 'var',
+            name: 'f'
+          }
+        }
       }
     }
-  },
-  tx.range(0, Infinity)[Symbol.iterator]()
-)
+  }
+}
+
+const ast = indexAst(rawAst, tx.range(0, Infinity)[Symbol.iterator]())
 
 const timeline = buildTimeline(ast)
-
-const step = null as any
-
-const layout: Layout = [
-  {
-    _type: 'nested',
-    arguments: [0, 1, 2],
-    color: 'pink',
-    id: 10,
-    index: 0,
-    output: 4,
-    step,
-    steps: [
-      {
-        _type: 'call',
-        color: 'red',
-        index: 2,
-        interval: { from: 0, to: 2 },
-        step,
-        id: 0
-      },
-      {
-        _type: 'call',
-        color: 'blue',
-        index: 3,
-        interval: { from: 0, to: 2 },
-        step,
-        id: 1
-      },
-      {
-        _type: 'call',
-        color: 'green',
-        index: 4,
-        interval: { from: 0, to: 3 },
-        step,
-        id: 2
-      },
-      {
-        _type: 'call',
-        color: 'red',
-        index: 1,
-        interval: {
-          from: 1,
-          to: 3
-        },
-        step,
-        id: 3
-      },
-      {
-        _type: 'call',
-        color: 'red',
-        index: 0,
-        interval: {
-          from: 2,
-          to: 4
-        },
-        step,
-        id: 4
-      }
-    ]
-  }
-]
-
 console.log(timeline)
+const builtLayouts = buildLayouts(timeline)
 
-console.log(layout)
-console.log(getLayoutMatrix(layout))
+// const step = null as any
+
+console.log(builtLayouts)
+
+// console.log(layout)
+console.log(builtLayouts.map(getLayoutMatrix))
 
 // const shapes = renderLambda(layout)
 

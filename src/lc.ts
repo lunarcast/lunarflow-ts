@@ -53,7 +53,7 @@ export const indexAst = (
     return {
       _type: 'call',
       argument: indexAst(ast.argument, ids, scope),
-      func: indexAst(ast, ids, scope),
+      func: indexAst(ast.func, ids, scope),
       id: getId()
     }
   }
